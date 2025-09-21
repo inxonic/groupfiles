@@ -30,5 +30,6 @@ Get-ChildItem $Path |
                 -replace '[^\w\s]', ''
         }
     } |
+    Where-Object -Property Count -gt 1 |
     Select-Object -Property Count, Name,
         @{n='Size'; e={(($_.Group | Measure-Object -Property Size -Sum).Sum)/1MB}}
