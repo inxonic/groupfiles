@@ -24,45 +24,92 @@ Group-Files.ps1 -Path C:\Videos -MarkedPath C:\VideoArchive -SortBy Size
 
 #>
 
+[CmdletBinding()]
 param (
-    [Parameter(Mandatory, Position=0)]
+    [Parameter(Mandatory, Position=0, ValueFromPipeline)]
     [string[]]$Path,
 
     [Parameter()]
     [string[]]$MarkedPath,
 
     [PSDefaultValue()]
+    [string]$ExifTool = 'exiftool',
+
+    [PSDefaultValue()]
     [Int32]$MinCount = 2,
 
     [PSDefaultValue()]
-    [ValidateSet('Count', 'Mark', 'Name', 'Size')]
+    [ValidateSet('Count', 'Mark', 'Name', 'Rating', 'Size')]
     [String[]]$SortBy = "Count",
 
     [switch]$Descending
 )
 
-filter Normalize-FileName {
-    $_ `
-    <# Remove filename suffix as well as timestamp and station suffix if present #> `
-    -replace '(_\d{4}_(\d{2}_){2}\d{4}_.*)?\.\w+$', '' `
-    <# Remove season and episode information #> `
-    -replace '(^|[\W_])S\d+E\d+($|[\W_])', '$1$2' `
-    <# Normalize all word separators to a single space #> `
-    -replace '[\s-_]+', ' ' `
-    <# Remove any non-word characters except whitespace #> `
-    -replace '[^\w\s]', ''
+begin {
+    $ErrorActionPreference = 'Stop'
+
+    filter Normalize-FileName {
+        $_ `
+        <# Remove filename suffix as well as timestamp and station suffix if present #> `
+        -replace '(_\d{4}_(\d{2}_){2}\d{4}_.*)?\.\w+$', '' `
+        <# Remove season and episode information #> `
+        -replace '(^|[\W_])S\d+E\d+($|[\W_])', '$1$2' `
+        <# Normalize all word separators to a single space #> `
+        -replace '[\s-_]+', ' ' `
+        <# Remove any non-word characters except whitespace #> `
+        -replace '[^\w\s]', ''
+    }
+
+    function Get-Files {
+        [CmdletBinding()]
+        param (
+            [Parameter(Mandatory, Position=0, ValueFromPipeline)]
+            [string[]]$Path,
+
+            [switch]$Mark,
+            [switch]$GetRating
+        )
+
+        process {
+            foreach ($file in (Get-ChildItem -File $Path)) {
+                if ($GetRating) {
+                    $rating = [int](& $ExifTool -s3 -Rating -- $file.FullName)
+                }
+
+                [PSCustomObject]@{
+                    File = $file
+                    Mark = $Mark
+                    Rating = If ($GetRating -and $rating) { $rating } else { 0 }
+                }
+            }
+        }
+    }
+
+    $sort_parameters = @{
+        Property = $SortBy
+        Descending = $Descending
+    }
+
+    $files = Get-Files -Path $MarkedPath -Mark -GetRating
 }
 
-$sort_parameters = @{
-    Property = $SortBy
-    Descending = $Descending
+process
+{
+    $files += Get-Files -Path $Path
 }
 
-(Get-ChildItem $Path | Select-Object -Property @{n='File'; e={ $_ }}, @{n='Mark'; e={ $false }}) +
-    (Get-ChildItem $MarkedPath | Select-Object -Property @{n='File'; e={ $_ }}, @{n='Mark'; e={ $true }}) |
-    Group-Object -Property @{Expression={ $_.File.Name | Normalize-FileName }} |
-    Where-Object -Property Count -ge $MinCount |
-    Select-Object -Property Count, Name,
-        @{n='Size'; e={ (($_.Group.File | Measure-Object -Property Size -Sum).Sum) / 1MB }},
-        @{n='Mark'; e={ $true -in $_.Group.Mark }} |
-    Sort-Object @sort_parameters
+end {
+    $files | Group-Object -Property @{Expression={ $_.File.Name | Normalize-FileName }} |
+        Where-Object -Property Count -ge $MinCount |
+        ForEach-Object {
+            [PSCustomObject]@{
+                Mark = $true -in $_.Group.Mark
+                Rating = [int]($_.Group.Rating | Measure-Object -Maximum).Maximum
+                Name = $_.Name
+                Count = $_.Count
+                Size = [int](($_.Group.File | Measure-Object -Property Length -Sum).Sum)
+            }
+
+        } |
+        Sort-Object @sort_parameters
+}
