@@ -14,10 +14,19 @@ Specifies a path to one or more locations to search for video files
 Specifies a path to one or more locations to search for video files that will be marked
 
 .PARAMETER SortBy
-Specify the property by which to sort the grouped files
+Specifies the property by which to sort the grouped files
 
 .PARAMETER Descending
 Sort the grouped files in descending order instead of ascending order
+
+.PARAMETER MinCount
+Only return groups containing at least a specific number of files
+
+.PARAMETER MinRating
+Only return groups containing a marked file with at least a specific rating
+
+.PARAMETER CacheRating
+Cache the file ratings per directory
 
 .EXAMPLE
 Group-Files.ps1 -Path C:\Videos -MarkedPath C:\VideoArchive -SortBy Size
@@ -39,10 +48,14 @@ param (
     [Int32]$MinCount = 2,
 
     [PSDefaultValue()]
+    [Int32]$MinRating,
+
+    [PSDefaultValue()]
     [ValidateSet('Count', 'Mark', 'Name', 'Rating', 'Size')]
     [String[]]$SortBy = "Count",
 
-    [switch]$Descending
+    [switch]$Descending,
+    [switch]$CacheRating
 )
 
 begin {
@@ -71,15 +84,27 @@ begin {
         )
 
         process {
-            foreach ($file in (Get-ChildItem -File $Path)) {
-                if ($GetRating) {
-                    $rating = [int](& $ExifTool -s3 -Rating -- $file.FullName)
-                }
+            $rating = @{}
 
+            if ($GetRating) {
+                $ratings_file = Join-Path $Path '.Group-Files.ratings.json'
+
+                if (-not $CacheRating -or -not (Test-Path -PathType Leaf $ratings_file))
+                {
+                    & $ExifTool -charset filename=utf8 -json -SharedUserRating $Path >$ratings_file 2>/dev/null
+                }
+                Get-Content $ratings_file |
+                    ConvertFrom-Json |
+                    ForEach-Object {
+                        $rating[($_.SourceFile | Split-Path -Leaf)] = $_.SharedUserRating
+                    }
+            }
+
+            foreach ($file in (Get-ChildItem -File $Path)) {
                 [PSCustomObject]@{
                     File = $file
                     Mark = $Mark
-                    Rating = If ($GetRating -and $rating) { $rating } else { 0 }
+                    Rating = $rating[$file.Name]
                 }
             }
         }
@@ -100,14 +125,18 @@ process
 
 end {
     $files | Group-Object -Property @{Expression={ $_.File.Name | Normalize-FileName }} |
-        Where-Object -Property Count -ge $MinCount |
         ForEach-Object {
-            [PSCustomObject]@{
-                Mark = $true -in $_.Group.Mark
-                Rating = [int]($_.Group.Rating | Measure-Object -Maximum).Maximum
-                Name = $_.Name
-                Count = $_.Count
-                Size = [int](($_.Group.File | Measure-Object -Property Length -Sum).Sum)
+            if ($_.Count -ge $MinCount) {
+                $rating = [int]($_.Group.Rating | Measure-Object -Maximum).Maximum
+                if (-not $MinRating -or $rating -ge $MinRating) {
+                    [PSCustomObject]@{
+                        Mark = $true -in $_.Group.Mark
+                        Rating = $rating
+                        Name = $_.Name
+                        Count = $_.Count
+                        Size = [int](($_.Group.File | Measure-Object -Property Length -Sum).Sum)
+                    }
+                }
             }
 
         } |
