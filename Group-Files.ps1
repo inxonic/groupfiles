@@ -101,7 +101,10 @@ begin {
         Descending = $Descending
     }
 
-    $files = Get-Files -Path $MarkedPath -Mark
+    $files = if ($MarkedPath) {
+        Get-Files -Path $MarkedPath -Mark
+    }
+    else { @() }
 }
 
 process {
