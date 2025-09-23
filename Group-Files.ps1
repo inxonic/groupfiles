@@ -122,7 +122,7 @@ end {
             }
 
         $groups.Group | Where-Object -Property Mark -EQ $true | ForEach-Object {
-            $_.Rating = $ratings[$_.File.FullName]
+            $_.Rating = $ratings[$_.File.FullName -replace '\\', '/']
         }
     }
 
@@ -139,7 +139,7 @@ end {
                     Rating = $rating
                     Name   = $_.Name
                     Count  = $_.Count
-                    Size   = [int](($_.Group.File | Measure-Object -Property Length -Sum).Sum)
+                    Size   = [int](($_.Group.File | Measure-Object -Property Length -Sum).Sum / 1MB)
                 }
             }
 

@@ -7,5 +7,4 @@ param (
 
 $ErrorActionPreference = 'Stop'
 $config = Import-PowerShellDataFile $ConfigPath
-Write-Host $args
 &(Join-Path $PSScriptRoot 'Group-Files.ps1') @config @args
