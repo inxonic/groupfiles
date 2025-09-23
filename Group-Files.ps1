@@ -82,8 +82,7 @@ begin {
             [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
             [string[]]$Path,
 
-            [switch]$Mark,
-            [switch]$GetRating
+            [switch]$Mark
         )
 
         process {
@@ -102,7 +101,7 @@ begin {
         Descending = $Descending
     }
 
-    $files = Get-Files -Path $MarkedPath -Mark -GetRating
+    $files = Get-Files -Path $MarkedPath -Mark
 }
 
 process {
