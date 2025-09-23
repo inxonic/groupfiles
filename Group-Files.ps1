@@ -64,7 +64,7 @@ begin {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $PSDefaultParameterValues['*:Encoding'] = 'utf8'
 
-    filter Normalize-FileName {
+    filter ConvertTo-NormalizedFilename {
         $_ `
             <# Remove filename suffix as well as timestamp and station suffix if present #> `
             -replace '(_\d{4}_(\d{2}_){2}\d{4}_.*)?\.\w+$', '' `
@@ -110,7 +110,7 @@ process {
 }
 
 end {
-    $groups = $files | Group-Object -Property @{Expression = { $_.File.Name | Normalize-FileName } } |
+    $groups = $files | Group-Object -Property @{Expression = { $_.File.Name | ConvertTo-NormalizedFilename } } |
         Where-Object -Property Count -GE $MinCount
 
     if ($GetRating) {
